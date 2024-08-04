@@ -6,19 +6,34 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/miekg/dns"
 )
 
-const fireHolURL = "https://iplists.firehol.org/files/firehol_level1.netset"
+const (
+	fireHolURL        = "https://iplists.firehol.org/files/firehol_level1.netset"
+	updateInterval    = 6 * time.Hour
+	initialRetryDelay = 5 * time.Second
+	maxRetryDelay     = 5 * time.Minute
+)
 
-var blockedNetworks []*net.IPNet
+var (
+	blockedNetworks []*net.IPNet
+	networksMutex   sync.RWMutex
+)
 
 func main() {
+	// Initial download of the Firehol list
 	err := downloadAndParseFireholList()
 	if err != nil {
-		log.Fatalf("Failed to download and parse Firehol list: %v", err)
+		log.Printf("Failed to download and parse Firehol list: %v", err)
+		log.Println("Starting with an empty list. Will retry in the background.")
 	}
+
+	// Start the periodic update goroutine
+	go periodicUpdate()
 
 	dns.HandleFunc(".", handleRequest)
 
@@ -30,12 +45,36 @@ func main() {
 	}
 }
 
+func periodicUpdate() {
+	retryDelay := initialRetryDelay
+	for {
+		// wait for the update interval
+		time.Sleep(updateInterval)
+		err := downloadAndParseFireholList()
+		if err != nil {
+			log.Printf("Failed to update Firehol list: %v", err)
+			log.Printf("Will retry in %v", retryDelay)
+			time.Sleep(retryDelay)
+			// Exponential backoff for retries
+			retryDelay *= 2
+			if retryDelay > maxRetryDelay {
+				retryDelay = maxRetryDelay
+			}
+		} else {
+			log.Println("Successfully updated Firehol list")
+			retryDelay = initialRetryDelay
+		}
+	}
+}
+
 func downloadAndParseFireholList() error {
 	resp, err := http.Get(fireHolURL)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
+
+	var newBlockedNetworks []*net.IPNet
 
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
@@ -49,18 +88,27 @@ func downloadAndParseFireholList() error {
 			log.Printf("Error parsing CIDR %s: %v", line, err)
 			continue
 		}
-		blockedNetworks = append(blockedNetworks, ipNet)
+		newBlockedNetworks = append(newBlockedNetworks, ipNet)
 	}
 
 	if err := scanner.Err(); err != nil {
 		return err
 	}
 
-	log.Printf("Loaded %d blocked networks", len(blockedNetworks))
+	// the mutex will ensure that the DNS handler doesn't read the list while it's being updated
+	networksMutex.Lock()
+	blockedNetworks = newBlockedNetworks
+	networksMutex.Unlock()
+
+	log.Printf("Loaded %d blocked networks", len(newBlockedNetworks))
 	return nil
 }
 
 func isIPBlocked(ip net.IP) bool {
+	// Acquire a read lock to safely access blockedNetworks
+	networksMutex.RLock()
+	defer networksMutex.RUnlock()
+
 	for _, network := range blockedNetworks {
 		if network.Contains(ip) {
 			return true
