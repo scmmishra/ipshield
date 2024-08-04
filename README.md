@@ -6,7 +6,6 @@ The DNS-based approach offers excellent performance in terms of latency. DNS que
 
 ## Features
 
-- DNS server listening on port 53
 - Automatic downloading and parsing of the Firehol level 1 list
 - Periodic updates of the blocklist every 6 hours
 - DNS responses cached for 1 hour
