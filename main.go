@@ -1,26 +1,72 @@
 package main
 
 import (
+	"bufio"
 	"log"
+	"net"
+	"net/http"
 	"strings"
 
 	"github.com/miekg/dns"
 )
 
-var blockedIPs = map[string]bool{
-	"8.8.8.8": true,
-	"1.1.1.1": true,
-}
+const fireHolURL = "https://iplists.firehol.org/files/firehol_level1.netset"
+
+var blockedNetworks []*net.IPNet
 
 func main() {
+	err := downloadAndParseFireholList()
+	if err != nil {
+		log.Fatalf("Failed to download and parse Firehol list: %v", err)
+	}
+
 	dns.HandleFunc(".", handleRequest)
 
 	server := &dns.Server{Addr: ":53", Net: "udp"}
 	log.Printf("Starting DNS server on port 53")
-	err := server.ListenAndServe()
+	err = server.ListenAndServe()
 	if err != nil {
 		log.Fatalf("Failed to start server: %s\n", err.Error())
 	}
+}
+
+func downloadAndParseFireholList() error {
+	resp, err := http.Get(fireHolURL)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		_, ipNet, err := net.ParseCIDR(line)
+		if err != nil {
+			log.Printf("Error parsing CIDR %s: %v", line, err)
+			continue
+		}
+		blockedNetworks = append(blockedNetworks, ipNet)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	log.Printf("Loaded %d blocked networks", len(blockedNetworks))
+	return nil
+}
+
+func isIPBlocked(ip net.IP) bool {
+	for _, network := range blockedNetworks {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 func handleRequest(w dns.ResponseWriter, r *dns.Msg) {
@@ -32,8 +78,11 @@ func handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 		for _, q := range m.Question {
 			switch q.Qtype {
 			case dns.TypeA:
-				ip := strings.TrimSuffix(q.Name, ".")
-				if blockedIPs[ip] {
+				ip := net.ParseIP(strings.TrimSuffix(q.Name, "."))
+				if ip == nil {
+					continue
+				}
+				if isIPBlocked(ip) {
 					rr, err := dns.NewRR(q.Name + " A 127.0.0.2")
 					if err == nil {
 						m.Answer = append(m.Answer, rr)
