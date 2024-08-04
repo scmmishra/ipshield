@@ -10,3 +10,10 @@ The DNS-based approach offers excellent performance in terms of latency. DNS que
 - Periodic updates of the blocklist every 6 hours
 - DNS responses cached for 1 hour
 - Returns 127.0.0.2 for blocked IPs and 127.0.0.1 for safe IPs
+
+## Try it out
+
+```
+dig <ip-addr> @localhost +short
+```
+
