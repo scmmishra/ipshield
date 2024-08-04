@@ -17,6 +17,7 @@ const (
 	updateInterval    = 6 * time.Hour
 	initialRetryDelay = 5 * time.Second
 	maxRetryDelay     = 5 * time.Minute
+	cacheTTL          = 3600 // 1 hour in seconds
 )
 
 var (
@@ -130,16 +131,16 @@ func handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 				if ip == nil {
 					continue
 				}
+				var rr dns.RR
+				var err error
 				if isIPBlocked(ip) {
-					rr, err := dns.NewRR(q.Name + " A 127.0.0.2")
-					if err == nil {
-						m.Answer = append(m.Answer, rr)
-					}
+					rr, err = dns.NewRR(q.Name + " 3600 IN A 127.0.0.2")
 				} else {
-					rr, err := dns.NewRR(q.Name + " A 127.0.0.1")
-					if err == nil {
-						m.Answer = append(m.Answer, rr)
-					}
+					rr, err = dns.NewRR(q.Name + " 3600 IN A 127.0.0.1")
+				}
+				if err == nil {
+					rr.Header().Ttl = cacheTTL
+					m.Answer = append(m.Answer, rr)
 				}
 			}
 		}
