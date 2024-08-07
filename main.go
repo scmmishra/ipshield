@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/scmmishra/ipshield/internal/ip"
 )
 
 const (
@@ -21,17 +23,24 @@ const (
 )
 
 var (
-	blockedNetworks []*net.IPNet
-	networksMutex   sync.RWMutex
+	blockedNetworks    []*net.IPNet
+	dataCenterNetworks []*net.IPNet
+	networksMutex      sync.RWMutex
 )
 
 func main() {
-	// Initial download of the Firehol list
 	err := downloadAndParseFireholList()
 	if err != nil {
 		log.Printf("Failed to download and parse Firehol list: %v", err)
 		log.Println("Starting with an empty list. Will retry in the background.")
 	}
+
+	// Download data center IP ranges
+	dataCenterRanges, err := ip.GetDataCenterIPRanges()
+	if err != nil {
+		log.Printf("Warning: Error fetching some data center ranges: %v", err)
+	}
+	dataCenterNetworks = dataCenterRanges
 
 	// Start the periodic update goroutine
 	go periodicUpdate()
@@ -64,6 +73,17 @@ func periodicUpdate() {
 		} else {
 			log.Println("Successfully updated Firehol list")
 			retryDelay = initialRetryDelay
+		}
+
+		// Update data center IP ranges
+		dataCenterRanges, err := ip.GetDataCenterIPRanges()
+		if err != nil {
+			log.Printf("Warning: Error updating data center ranges: %v", err)
+		} else {
+			networksMutex.Lock()
+			dataCenterNetworks = dataCenterRanges
+			networksMutex.Unlock()
+			log.Println("Successfully updated data center IP ranges")
 		}
 	}
 }
@@ -118,6 +138,18 @@ func isIPBlocked(ip net.IP) bool {
 	return false
 }
 
+func isDataCenterIP(ip net.IP) bool {
+	networksMutex.RLock()
+	defer networksMutex.RUnlock()
+
+	for _, network := range dataCenterNetworks {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 func handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 	m := new(dns.Msg)
 	m.SetReply(r)
@@ -131,13 +163,17 @@ func handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 				if ip == nil {
 					continue
 				}
-				var rr dns.RR
-				var err error
+
+				var txt string
 				if isIPBlocked(ip) {
-					rr, err = dns.NewRR(q.Name + " 3600 IN A 127.0.0.2")
+					txt = "FLAGGED"
+				} else if isDataCenterIP(ip) {
+					txt = "DATACENTER"
 				} else {
-					rr, err = dns.NewRR(q.Name + " 3600 IN A 127.0.0.1")
+					txt = "SAFE"
 				}
+
+				rr, err := dns.NewRR(fmt.Sprintf("%s %d IN TXT \"%s\"", q.Name, cacheTTL, txt))
 				if err == nil {
 					rr.Header().Ttl = cacheTTL
 					m.Answer = append(m.Answer, rr)
