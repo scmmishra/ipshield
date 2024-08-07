@@ -18,6 +18,24 @@ const (
 	doCIDRURL             = "https://www.digitalocean.com/geo/google.csv"
 )
 
+var (
+	// https://techdocs.akamai.com/origin-ip-acl/docs/update-your-origin-server
+	AKAMAI_CIDR = []string{
+		"23.32.0.0/11", "23.192.0.0/11", "2.16.0.0/13", "104.64.0.0/10",
+		"184.24.0.0/13", "23.0.0.0/12", "95.100.0.0/15", "92.122.0.0/15",
+		"184.50.0.0/15", "88.221.0.0/16", "23.64.0.0/14", "72.246.0.0/15",
+		"96.16.0.0/15", "96.6.0.0/15", "69.192.0.0/16", "23.72.0.0/13",
+		"173.222.0.0/15", "118.214.0.0/16", "184.84.0.0/14",
+	}
+
+	// https://www.scaleway.com/en/docs/console/account/reference-content/scaleway-network-information/#monitoring-of-dedibox-servers
+	SCALEWAY_CIDR = []string{
+		"62.210.0.0/16", "195.154.0.0/16", "212.129.0.0/18", "62.4.0.0/19",
+		"212.83.128.0/19", "212.83.160.0/19", "212.47.224.0/19", "163.172.0.0/16",
+		"51.15.0.0/16", "151.115.0.0/16", "51.158.0.0/15",
+	}
+)
+
 func GetDataCenterIPRanges() ([]*net.IPNet, error) {
 	var allRanges []*net.IPNet
 	var wg sync.WaitGroup
@@ -62,6 +80,30 @@ func GetDataCenterIPRanges() ([]*net.IPNet, error) {
 		ranges, err := getDORanges()
 		if err != nil {
 			errChan <- fmt.Errorf("DigitalOcean: %w", err)
+			return
+		}
+		addRanges(ranges)
+	}()
+
+	// Akamai ranges
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ranges, err := parseIPRanges(strings.NewReader(strings.Join(AKAMAI_CIDR, "\n")))
+		if err != nil {
+			errChan <- fmt.Errorf("Akamai: %w", err)
+			return
+		}
+		addRanges(ranges)
+	}()
+
+	// Scaleway ranges
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ranges, err := parseIPRanges(strings.NewReader(strings.Join(SCALEWAY_CIDR, "\n")))
+		if err != nil {
+			errChan <- fmt.Errorf("Scaleway: %w", err)
 			return
 		}
 		addRanges(ranges)
