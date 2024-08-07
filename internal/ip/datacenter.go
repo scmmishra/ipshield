@@ -16,6 +16,7 @@ const (
 	datacenterIPRangesURL = "https://raw.githubusercontent.com/jhassine/server-ip-addresses/master/data/datacenters.txt"
 	ociCIDRURL            = "https://docs.cloud.oracle.com/en-us/iaas/tools/public_ip_ranges.json"
 	doCIDRURL             = "https://www.digitalocean.com/geo/google.csv"
+	vultrCIDRURL          = "https://geofeed.constant.com/?text"
 )
 
 var (
@@ -85,6 +86,18 @@ func GetDataCenterIPRanges() ([]*net.IPNet, error) {
 		addRanges(ranges)
 	}()
 
+	// Vultr ranges
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ranges, err := getVultrRanges()
+		if err != nil {
+			errChan <- fmt.Errorf("Vultr: %w", err)
+			return
+		}
+		addRanges(ranges)
+	}()
+
 	// Akamai ranges
 	wg.Add(1)
 	go func() {
@@ -133,6 +146,29 @@ func getMainDatacenterRanges() ([]*net.IPNet, error) {
 	defer resp.Body.Close()
 
 	return parseIPRanges(resp.Body)
+}
+
+func getVultrRanges() ([]*net.IPNet, error) {
+	resp, err := http.Get(vultrCIDRURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch Vultr IP ranges: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var ranges []string
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			ranges = append(ranges, line)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading Vultr IP ranges: %w", err)
+	}
+
+	return parseIPRanges(strings.NewReader(strings.Join(ranges, "\n")))
 }
 
 func getOCIRanges() ([]*net.IPNet, error) {
