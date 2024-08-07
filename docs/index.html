@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IPShield</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        line-height: 1.6;
+        color: #333;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      h1,
+      h2 {
+        color: #2c3e50;
+      }
+      code {
+        background-color: #f4f4f4;
+        padding: 2px 4px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>IPShield Documentation</h1>
+    <p>
+      IPShield is a DNS server that checks IP addresses against the Firehol
+      level 1 list and known datacenter IP ranges. This list is updated every 12
+      hours.
+    </p>
+
+    <h2>Usage</h2>
+    <p>To check an IP address, send a DNS query to the IPShield server:</p>
+    <code>dig @your-server-ip ip-to-check +short</code>
+
+    <h2>Response Types</h2>
+    <ul>
+      <li><strong>SAFE</strong>: The IP is not on any blocklist.</li>
+      <li>
+        <strong>DATACENTER</strong>: The IP belongs to a known datacenter.
+      </li>
+      <li>
+        <strong>FLAGGED</strong>: The IP is on the Firehol level 1 blocklist.
+      </li>
+    </ul>
+
+    <h2>Example</h2>
+    <p>To check the IP 8.8.8.8:</p>
+    <code>dig @your-server-ip 8.8.8.8 +short</code>
+
+    <p>
+      This project is open source. For more information, visit our
+      <a href="https://github.com/scmmishra/ipshield">GitHub repository</a>.
+    </p>
+  </body>
+</html>

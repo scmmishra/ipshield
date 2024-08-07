@@ -19,5 +19,5 @@ The DNS-based approach offers excellent performance in terms of latency. DNS que
 ## Try it out
 
 ```
-dig <ip-addr> @localhost +short
+dig <ip-addr> @ipshield.dev +short
 ```

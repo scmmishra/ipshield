@@ -44,6 +44,7 @@ func main() {
 
 	// Start the periodic update goroutine
 	go periodicUpdate()
+	go startHTTPServer()
 
 	dns.HandleFunc(".", handleRequest)
 
@@ -52,6 +53,15 @@ func main() {
 	err = server.ListenAndServe()
 	if err != nil {
 		log.Fatalf("Failed to start server: %s\n", err.Error())
+	}
+}
+
+func startHTTPServer() {
+	http.Handle("/", http.FileServer(http.Dir("docs")))
+	log.Printf("Starting HTTP server on port 80")
+	err := http.ListenAndServe(":80", nil)
+	if err != nil {
+		log.Fatalf("Failed to start HTTP server: %s\n", err.Error())
 	}
 }
 
