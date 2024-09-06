@@ -33,7 +33,7 @@
     <p>To check an IP address, send a DNS query to the IPShield server:</p>
     <code>dig ip-to-check @your-server-ip> +short</code>
 
-    <h2>Response Types</h2>
+    <h2>Response</h2>
     <ul>
       <li><strong>SAFE</strong>: The IP is not on any blocklist.</li>
       <li>
@@ -43,6 +43,17 @@
         <strong>FLAGGED</strong>: The IP is on the Firehol level 1 blocklist.
       </li>
     </ul>
+    <h2>Security</h2>
+    <p>
+      You should probably use it within a private network if you really want to
+      use it in production. Since the requests happen over DNS, it is not
+      encrypted.
+    </p>
+    <p>
+      I am planning to implement Transaction Signatures (TSIG) for secure DNS
+      server communications when I get some time, star the project if you wanna
+      stay in the loop
+    </p>
     <p>
       This project is open source. For more information, visit the
       <a href="https://github.com/scmmishra/ipshield">GitHub repository</a>.
