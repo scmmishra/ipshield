@@ -16,8 +16,20 @@ The DNS-based approach offers excellent performance in terms of latency. DNS que
 - `DATACENTER` if the IP is from a known data center
 - `SUSPICIOUS` for malicious IPs
 
-## Try it out
+### Try it out
 
 ```
 dig <ip-addr> @ipshield.dev +short
 ```
+
+## Security Considerations
+
+You should probably use it within a private network if you really want to use it in production. Since the requests happen over DNS, it is not encrypted.
+
+I could implement Transaction Signatures (TSIG) for secure DNS server communication when I get some time, if you're interested feel free to open a PR :)
+
+## Why?
+
+Just for fun, I have been trying Go for a while, and wanted to build a tiny service for bot protection for my side project [Picoletter](https://picoletter.com).
+
+P.S. The inspiration for the DNS based approach came from a friends (Who is not as good looking as me) project [dns.toys](https://www.dns.toys/)
