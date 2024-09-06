@@ -13,8 +13,8 @@ before:
     - go mod tidy
 
 builds:
-  - main: ./cmd/slick/main.go
-    binary: slick
+  - main: ./main.go
+    binary: ipshield
     env:
       - CGO_ENABLED=0
     goos:
