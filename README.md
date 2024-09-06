@@ -4,6 +4,8 @@ A tiny Go service that provides a DNS server that checks IP addresses against th
 
 The DNS-based approach offers excellent performance in terms of latency. DNS queries are typically very fast, and the responses can be cached by clients and intermediate DNS servers, further reducing latency for repeated checks. This makes it an ideal solution for applications requiring quick and efficient IP reputation lookups.
 
+To install it on a any VM, run `curl -fsSL https://dub.sh/ipshield | bash`, you can set this up as a service. I'll add more docs soon.
+
 ## Features
 
 - Automatic downloading and parsing of the Firehol level 1 list
