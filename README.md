@@ -1,6 +1,6 @@
 # IPShield
 
-A tiny Go service that provides a DNS server that checks IP addresses against the Firehol level 1 list, with responses indicating whether an IP is suspicious or not.
+A tiny Go service that provides a DNS server that checks IP addresses against the Firehol level 1 list and known data center IPs, with responses indicating whether an IP is suspicious or not.
 
 The DNS-based approach offers excellent performance in terms of latency. DNS queries are typically very fast, and the responses can be cached by clients and intermediate DNS servers, further reducing latency for repeated checks. This makes it an ideal solution for applications requiring quick and efficient IP reputation lookups.
 
