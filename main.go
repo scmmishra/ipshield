@@ -20,7 +20,6 @@ const (
 	initialRetryDelay = 5 * time.Second
 	maxRetryDelay     = 5 * time.Minute
 	cacheTTL          = 3600 // 1 hour in seconds
-	httpPort          = 8080
 )
 
 var (
@@ -45,7 +44,6 @@ func main() {
 
 	// Start the periodic update goroutine
 	go periodicUpdate()
-	go startHTTPServer()
 
 	dns.HandleFunc(".", handleRequest)
 
@@ -54,16 +52,6 @@ func main() {
 	err = server.ListenAndServe()
 	if err != nil {
 		log.Fatalf("Failed to start server: %s\n", err.Error())
-	}
-}
-
-func startHTTPServer() {
-	http.Handle("/", http.FileServer(http.Dir("docs")))
-
-	log.Printf("Starting HTTP server on port %d", httpPort)
-	err := http.ListenAndServe(fmt.Sprintf(":%d", httpPort), nil)
-	if err != nil {
-		log.Fatalf("Failed to start HTTP server: %s\n", err.Error())
 	}
 }
 
