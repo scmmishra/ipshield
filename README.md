@@ -34,4 +34,4 @@ I could implement Transaction Signatures (TSIG) for secure DNS server communicat
 
 Just for fun, I have been trying Go for a while, and wanted to build a tiny service for bot protection for my side project [Picoletter](https://picoletter.com).
 
-P.S. The inspiration for the DNS based approach came from a friends (Who is not as good looking as me) project [dns.toys](https://www.dns.toys/)
+P.S. The inspiration for the DNS-based approach came from a friends project [dns.toys](https://www.dns.toys/)
