@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -158,8 +157,10 @@ func handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 	if r.Opcode == dns.OpcodeQuery {
 		for _, q := range m.Question {
 			switch q.Qtype {
-			case dns.TypeA:
-				ip := net.ParseIP(strings.TrimSuffix(q.Name, "."))
+			case dns.TypeTXT:
+				name := strings.TrimSuffix(q.Name, ".")
+				ip := net.ParseIP(name)
+
 				if ip == nil {
 					continue
 				}
@@ -173,11 +174,11 @@ func handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 					txt = "SAFE"
 				}
 
-				rr, err := dns.NewRR(fmt.Sprintf("%s %d IN TXT \"%s\"", q.Name, cacheTTL, txt))
-				if err == nil {
-					rr.Header().Ttl = cacheTTL
-					m.Answer = append(m.Answer, rr)
+				rr := &dns.TXT{
+					Hdr: dns.RR_Header{Name: q.Name, Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: cacheTTL},
+					Txt: []string{txt},
 				}
+				m.Answer = append(m.Answer, rr)
 			}
 		}
 	}
