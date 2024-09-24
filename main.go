@@ -15,6 +15,7 @@ import (
 
 const (
 	fireHolURL        = "https://iplists.firehol.org/files/firehol_level1.netset"
+	torExitNodeURL    = "https://check.torproject.org/torbulkexitlist"
 	updateInterval    = 6 * time.Hour
 	initialRetryDelay = 5 * time.Second
 	maxRetryDelay     = 5 * time.Minute
@@ -24,6 +25,7 @@ const (
 var (
 	blockedNetworks    []*net.IPNet
 	dataCenterNetworks []*net.IPNet
+	torExitNodes       []net.IP
 	networksMutex      sync.RWMutex
 )
 
@@ -32,6 +34,12 @@ func main() {
 	if err != nil {
 		log.Printf("Failed to download and parse Firehol list: %v", err)
 		log.Println("Starting with an empty list. Will retry in the background.")
+	}
+
+	err = downloadAndParseTorExitNodes()
+	if err != nil {
+		log.Printf("Failed to download and parse Tor exit node list: %v", err)
+		log.Println("Starting with an empty Tor exit node list. Will retry in the background.")
 	}
 
 	// Download data center IP ranges
@@ -57,20 +65,21 @@ func main() {
 func periodicUpdate() {
 	retryDelay := initialRetryDelay
 	for {
-		// wait for the update interval
 		time.Sleep(updateInterval)
-		err := downloadAndParseFireholList()
-		if err != nil {
+
+		if err := downloadAndParseFireholList(); err != nil {
 			log.Printf("Failed to update Firehol list: %v", err)
-			log.Printf("Will retry in %v", retryDelay)
-			time.Sleep(retryDelay)
-			// Exponential backoff for retries
-			retryDelay *= 2
-			if retryDelay > maxRetryDelay {
-				retryDelay = maxRetryDelay
-			}
+			retryDelay = handleUpdateError(retryDelay)
 		} else {
 			log.Println("Successfully updated Firehol list")
+			retryDelay = initialRetryDelay
+		}
+
+		if err := downloadAndParseTorExitNodes(); err != nil {
+			log.Printf("Failed to update Tor exit node list: %v", err)
+			retryDelay = handleUpdateError(retryDelay)
+		} else {
+			log.Println("Successfully updated Tor exit node list")
 			retryDelay = initialRetryDelay
 		}
 
@@ -78,13 +87,25 @@ func periodicUpdate() {
 		dataCenterRanges, err := ip.GetDataCenterIPRanges()
 		if err != nil {
 			log.Printf("Warning: Error updating data center ranges: %v", err)
+			retryDelay = handleUpdateError(retryDelay)
 		} else {
 			networksMutex.Lock()
 			dataCenterNetworks = dataCenterRanges
 			networksMutex.Unlock()
 			log.Println("Successfully updated data center IP ranges")
+			retryDelay = initialRetryDelay
 		}
 	}
+}
+
+func handleUpdateError(retryDelay time.Duration) time.Duration {
+	log.Printf("Will retry in %v", retryDelay)
+	time.Sleep(retryDelay)
+	retryDelay *= 2
+	if retryDelay > maxRetryDelay {
+		retryDelay = maxRetryDelay
+	}
+	return retryDelay
 }
 
 func downloadAndParseFireholList() error {
@@ -121,6 +142,54 @@ func downloadAndParseFireholList() error {
 	networksMutex.Unlock()
 
 	log.Printf("Loaded %d blocked networks", len(newBlockedNetworks))
+	return nil
+}
+
+func isTorExitNode(ip net.IP) bool {
+	networksMutex.RLock()
+	defer networksMutex.RUnlock()
+
+	for _, exitNode := range torExitNodes {
+		if exitNode.Equal(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func downloadAndParseTorExitNodes() error {
+	resp, err := http.Get(torExitNodeURL)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	var newTorExitNodes []net.IP
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		ip := net.ParseIP(line)
+		if ip == nil {
+			log.Printf("Error parsing IP %s", line)
+			continue
+		}
+		newTorExitNodes = append(newTorExitNodes, ip)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	networksMutex.Lock()
+	torExitNodes = newTorExitNodes
+	networksMutex.Unlock()
+
+	log.Printf("Loaded %d Tor exit nodes", len(newTorExitNodes))
 	return nil
 }
 
@@ -170,6 +239,8 @@ func handleRequest(w dns.ResponseWriter, r *dns.Msg) {
 					txt = "FLAGGED"
 				} else if isDataCenterIP(ip) {
 					txt = "DATACENTER"
+				} else if isTorExitNode(ip) {
+					txt = "TOR_EXIT"
 				} else {
 					txt = "SAFE"
 				}
