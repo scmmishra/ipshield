@@ -16,6 +16,8 @@ import (
 const (
 	fireHolURL        = "https://iplists.firehol.org/files/firehol_level1.netset"
 	torExitNodeURL    = "https://check.torproject.org/torbulkexitlist"
+	ipsumURL          = "https://raw.githubusercontent.com/stamparm/ipsum/master/ipsum.txt"
+	greensnowURL      = "https://blocklist.greensnow.co/greensnow.txt"
 	updateInterval    = 6 * time.Hour
 	initialRetryDelay = 5 * time.Second
 	maxRetryDelay     = 5 * time.Minute
@@ -26,20 +28,30 @@ var (
 	blockedNetworks    []*net.IPNet
 	dataCenterNetworks []*net.IPNet
 	torExitNodes       []net.IP
+	ipsumIPs           []net.IP
+	greensnowIPs       []net.IP
 	networksMutex      sync.RWMutex
 )
 
 func main() {
-	err := downloadAndParseFireholList()
-	if err != nil {
+	if err := downloadAndParseFireholList(); err != nil {
 		log.Printf("Failed to download and parse Firehol list: %v", err)
 		log.Println("Starting with an empty list. Will retry in the background.")
 	}
 
-	err = downloadAndParseTorExitNodes()
-	if err != nil {
+	if err := downloadAndParseTorExitNodes(); err != nil {
 		log.Printf("Failed to download and parse Tor exit node list: %v", err)
 		log.Println("Starting with an empty Tor exit node list. Will retry in the background.")
+	}
+
+	if err := downloadAndParseIpsumList(); err != nil {
+		log.Printf("Failed to download and parse IPsum list: %v", err)
+		log.Println("Starting with an empty IPsum list. Will retry in the background.")
+	}
+
+	if err := downloadAndParseGreensnowList(); err != nil {
+		log.Printf("Failed to download and parse Greensnow list: %v", err)
+		log.Println("Starting with an empty Greensnow list. Will retry in the background.")
 	}
 
 	// Download data center IP ranges
@@ -67,23 +79,26 @@ func periodicUpdate() {
 	for {
 		time.Sleep(updateInterval)
 
-		if err := downloadAndParseFireholList(); err != nil {
-			log.Printf("Failed to update Firehol list: %v", err)
-			retryDelay = handleUpdateError(retryDelay)
-		} else {
-			log.Println("Successfully updated Firehol list")
-			retryDelay = initialRetryDelay
+		updateFunctions := []struct {
+			name string
+			fn   func() error
+		}{
+			{"Firehol list", downloadAndParseFireholList},
+			{"Tor exit node list", downloadAndParseTorExitNodes},
+			{"IPsum list", downloadAndParseIpsumList},
+			{"Greensnow list", downloadAndParseGreensnowList},
 		}
 
-		if err := downloadAndParseTorExitNodes(); err != nil {
-			log.Printf("Failed to update Tor exit node list: %v", err)
-			retryDelay = handleUpdateError(retryDelay)
-		} else {
-			log.Println("Successfully updated Tor exit node list")
-			retryDelay = initialRetryDelay
+		for _, update := range updateFunctions {
+			if err := update.fn(); err != nil {
+				log.Printf("Failed to update %s: %v", update.name, err)
+				retryDelay = handleUpdateError(retryDelay)
+			} else {
+				log.Printf("Successfully updated %s", update.name)
+				retryDelay = initialRetryDelay
+			}
 		}
 
-		// Update data center IP ranges
 		dataCenterRanges, err := ip.GetDataCenterIPRanges()
 		if err != nil {
 			log.Printf("Warning: Error updating data center ranges: %v", err)
@@ -136,25 +151,12 @@ func downloadAndParseFireholList() error {
 		return err
 	}
 
-	// the mutex will ensure that the DNS handler doesn't read the list while it's being updated
 	networksMutex.Lock()
 	blockedNetworks = newBlockedNetworks
 	networksMutex.Unlock()
 
 	log.Printf("Loaded %d blocked networks", len(newBlockedNetworks))
 	return nil
-}
-
-func isTorExitNode(ip net.IP) bool {
-	networksMutex.RLock()
-	defer networksMutex.RUnlock()
-
-	for _, exitNode := range torExitNodes {
-		if exitNode.Equal(ip) {
-			return true
-		}
-	}
-	return false
 }
 
 func downloadAndParseTorExitNodes() error {
@@ -193,8 +195,96 @@ func downloadAndParseTorExitNodes() error {
 	return nil
 }
 
+func downloadAndParseIpsumList() error {
+	resp, err := http.Get(ipsumURL)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	var newIpsumIPs []net.IP
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) < 1 {
+			continue
+		}
+
+		ip := net.ParseIP(fields[0])
+		if ip == nil {
+			log.Printf("Error parsing IP %s", fields[0])
+			continue
+		}
+		newIpsumIPs = append(newIpsumIPs, ip)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	networksMutex.Lock()
+	ipsumIPs = newIpsumIPs
+	networksMutex.Unlock()
+
+	log.Printf("Loaded %d IPsum IPs", len(newIpsumIPs))
+	return nil
+}
+
+func downloadAndParseGreensnowList() error {
+	resp, err := http.Get(greensnowURL)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	var newGreensnowIPs []net.IP
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		ip := net.ParseIP(line)
+		if ip == nil {
+			log.Printf("Error parsing IP %s", line)
+			continue
+		}
+		newGreensnowIPs = append(newGreensnowIPs, ip)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	networksMutex.Lock()
+	greensnowIPs = newGreensnowIPs
+	networksMutex.Unlock()
+
+	log.Printf("Loaded %d Greensnow IPs", len(newGreensnowIPs))
+	return nil
+}
+
+func isTorExitNode(ip net.IP) bool {
+	networksMutex.RLock()
+	defer networksMutex.RUnlock()
+
+	for _, exitNode := range torExitNodes {
+		if exitNode.Equal(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 func isIPBlocked(ip net.IP) bool {
-	// Acquire a read lock to safely access blockedNetworks
 	networksMutex.RLock()
 	defer networksMutex.RUnlock()
 
@@ -203,6 +293,19 @@ func isIPBlocked(ip net.IP) bool {
 			return true
 		}
 	}
+
+	for _, blockedIP := range ipsumIPs {
+		if ip.Equal(blockedIP) {
+			return true
+		}
+	}
+
+	for _, blockedIP := range greensnowIPs {
+		if ip.Equal(blockedIP) {
+			return true
+		}
+	}
+
 	return false
 }
 
