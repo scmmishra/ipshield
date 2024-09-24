@@ -25,13 +25,14 @@
     <h1>IPShield</h1>
     <p>
       IPShield is a DNS server that checks IP addresses against the
-      <a href="https://iplists.firehol.org/">Firehol level 1</a> list and known
-      datacenter IP ranges. This list is updated every 12 hours.
+      <a href="https://iplists.firehol.org/">Firehol level 1</a> list, known
+      datacenter IP ranges, Tor exit nodes and other publicly available lists.
+      This list is updated every 12 hours.
     </p>
 
     <h2>Usage</h2>
     <p>To check an IP address, send a DNS query to the IPShield server:</p>
-    <code>dig 8.8.8.8 @ipshield.dev +short</code>
+    <code>dig 8.8.8.8 @ipshield.dev TXT +short</code>
 
     <h2>Response</h2>
     <ul>
@@ -42,6 +43,7 @@
       <li>
         <strong>FLAGGED</strong>: The IP is on the Firehol level 1 blocklist.
       </li>
+      <li><strong>TOR_EXIT</strong>: The IP is a known Tor exit node.</li>
     </ul>
     <h2>Usage</h2>
     <p>
